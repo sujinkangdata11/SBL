@@ -22,6 +22,19 @@ ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 # Helpers
 # ─────────────────────────────────────────────
 
+def _find_image_by_number(folder: str, number: int) -> str:
+    """숫자 파일명으로 이미지 찾기 (확장자 무관 - png, jpg, jpeg, webp 모두 지원)"""
+    folder_path = Path(folder.strip())
+    for ext in ALLOWED_EXTENSIONS:
+        candidate = folder_path / f"{number}{ext}"
+        if candidate.exists():
+            return str(candidate)
+    raise FileNotFoundError(
+        f"이미지를 찾을 수 없습니다: {folder_path / str(number)}"
+        f" (시도한 확장자: {', '.join(ALLOWED_EXTENSIONS)})"
+    )
+
+
 def _load_images_from_folder(folder: str) -> List[Dict[str, Any]]:
     """폴더에서 이미지 파일 목록 반환 (숫자 파일명 정렬)"""
     folder_path = Path(folder.strip())
@@ -172,23 +185,18 @@ class StoryboardLoader:
         idx = min(scene_index - 1, len(scenes) - 1)
         scene = _parse_scene(scenes[idx]["content"])
 
-        # 배경 이미지 로드
+        # 배경 이미지 로드 (png, jpg, jpeg, webp 모두 지원)
         bg_num = scene.get("background")
         if bg_num is None:
             raise ValueError("Scene 파일에 BACKGROUND 번호가 없습니다.")
-        bg_path = Path(background_folder.strip()) / f"{bg_num}.png"
-        if not bg_path.exists():
-            raise FileNotFoundError(f"배경 이미지를 찾을 수 없습니다: {bg_path}")
-        bg_tensor = _load_image_tensor(str(bg_path))
+        bg_path = _find_image_by_number(background_folder, bg_num)
+        bg_tensor = _load_image_tensor(bg_path)
 
-        # 캐릭터 이미지 로드 및 합성
+        # 캐릭터 이미지 로드 및 합성 (png, jpg, jpeg, webp 모두 지원)
         char_nums = scene.get("characters", [])
         if not char_nums:
             raise ValueError("Scene 파일에 CHARACTERS 번호가 없습니다.")
-        char_paths = [str(Path(character_folder.strip()) / f"{n}.png") for n in char_nums]
-        for p in char_paths:
-            if not Path(p).exists():
-                raise FileNotFoundError(f"캐릭터 이미지를 찾을 수 없습니다: {p}")
+        char_paths = [_find_image_by_number(character_folder, n) for n in char_nums]
         char_tensor = _merge_character_images(char_paths)
 
         # 프롬프트
