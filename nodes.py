@@ -23,7 +23,6 @@ ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 # ─────────────────────────────────────────────
 
 def _find_image_by_number(folder: str, number: int) -> str:
-    """숫자 파일명으로 이미지 찾기 (확장자 무관)"""
     folder_path = Path(folder.strip())
     for ext in ALLOWED_EXTENSIONS:
         candidate = folder_path / f"{number}{ext}"
@@ -114,7 +113,6 @@ def _load_image_tensor(path: str):
 
 
 def _merge_character_images(paths: List[str]) -> Image.Image:
-    """캐릭터 이미지들을 가로로 합쳐서 PIL Image 반환"""
     images = [Image.open(p).convert("RGB") for p in paths]
     max_h = max(img.height for img in images)
     resized = []
@@ -132,10 +130,7 @@ def _merge_character_images(paths: List[str]) -> Image.Image:
 
 
 def _combine_images(bg: Image.Image, char: Image.Image, mode: str) -> Image.Image:
-    """배경 + 캐릭터 합성"""
-
     if mode == "side_by_side":
-        # 가로로 이어붙이기
         max_h = max(bg.height, char.height)
         bg_r = bg.resize((int(bg.width * max_h / bg.height), max_h), Image.LANCZOS)
         char_r = char.resize((int(char.width * max_h / char.height), max_h), Image.LANCZOS)
@@ -143,9 +138,7 @@ def _combine_images(bg: Image.Image, char: Image.Image, mode: str) -> Image.Imag
         combined.paste(bg_r, (0, 0))
         combined.paste(char_r, (bg_r.width, 0))
         return combined
-
     elif mode == "character_bottom":
-        # 배경 아래에 캐릭터 배치 (세로로 붙이기)
         max_w = max(bg.width, char.width)
         bg_r = bg.resize((max_w, int(bg.height * max_w / bg.width)), Image.LANCZOS)
         char_r = char.resize((max_w, int(char.height * max_w / char.width)), Image.LANCZOS)
@@ -153,19 +146,15 @@ def _combine_images(bg: Image.Image, char: Image.Image, mode: str) -> Image.Imag
         combined.paste(bg_r, (0, 0))
         combined.paste(char_r, (0, bg_r.height))
         return combined
-
-    else:  # overlay - 캐릭터를 배경 위에 오버레이 (배경 크기 기준, 캐릭터를 하단 중앙에 배치)
+    else:  # overlay
         combined = bg.copy()
-        # 캐릭터를 배경 높이의 80% 크기로 리사이즈
         char_h = int(bg.height * 0.8)
         char_ratio = char.width / char.height
         char_w = int(char_h * char_ratio)
-        # 배경보다 넓으면 폭 기준으로 리사이즈
         if char_w > bg.width:
             char_w = int(bg.width * 0.9)
             char_h = int(char_w / char_ratio)
         char_r = char.resize((char_w, char_h), Image.LANCZOS)
-        # 하단 중앙 배치
         x = (bg.width - char_w) // 2
         y = bg.height - char_h
         combined.paste(char_r, (x, y))
@@ -184,8 +173,8 @@ def _pil_to_tensor(img: Image.Image):
 
 class StoryboardLoader:
     CATEGORY = "storyboard"
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "STRING")
-    RETURN_NAMES = ("combined_image", "background_image", "character_image", "prompt_text")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "STRING", "INT", "INT")
+    RETURN_NAMES = ("combined_image", "background_image", "character_image", "prompt_text", "width", "height")
     FUNCTION = "load"
     OUTPUT_NODE = False
 
@@ -198,6 +187,8 @@ class StoryboardLoader:
                 "scene_folder":      ("STRING", {"default": "C:/storyboard/scenes",       "multiline": False}),
                 "scene_index":       ("INT",    {"default": 1, "min": 1, "max": 9999, "step": 1}),
                 "combine_mode":      (["overlay", "character_bottom", "side_by_side"], {"default": "overlay"}),
+                "width":             ("INT",    {"default": 1280, "min": 64, "max": 8192, "step": 8}),
+                "height":            ("INT",    {"default": 720,  "min": 64, "max": 8192, "step": 8}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -211,11 +202,12 @@ class StoryboardLoader:
         scene_folder: str,
         scene_index: int,
         combine_mode: str = "overlay",
+        width: int = 1280,
+        height: int = 720,
         unique_id: str = "unknown",
     ):
         node_id = str(unique_id)
 
-        # 장면 파일 로드
         scenes = _load_scenes_from_folder(scene_folder)
         if not scenes:
             raise FileNotFoundError(f"장면 폴더에 txt 파일이 없습니다: {scene_folder}")
@@ -223,7 +215,7 @@ class StoryboardLoader:
         idx = min(scene_index - 1, len(scenes) - 1)
         scene = _parse_scene(scenes[idx]["content"])
 
-        # 배경 이미지 로드
+        # 배경 이미지
         bg_num = scene.get("background")
         if bg_num is None:
             raise ValueError("Scene 파일에 BACKGROUND 번호가 없습니다.")
@@ -231,7 +223,7 @@ class StoryboardLoader:
         bg_pil = Image.open(bg_path).convert("RGB")
         bg_tensor = _pil_to_tensor(bg_pil)
 
-        # 캐릭터 이미지 로드 및 합성
+        # 캐릭터 이미지
         char_nums = scene.get("characters", [])
         if not char_nums:
             raise ValueError("Scene 파일에 CHARACTERS 번호가 없습니다.")
@@ -239,11 +231,10 @@ class StoryboardLoader:
         char_pil = _merge_character_images(char_paths)
         char_tensor = _pil_to_tensor(char_pil)
 
-        # 배경 + 캐릭터 합성
+        # 합성
         combined_pil = _combine_images(bg_pil, char_pil, combine_mode)
         combined_tensor = _pil_to_tensor(combined_pil)
 
-        # 프롬프트
         prompt = scene.get("prompt", "")
 
         with STATE_LOCK:
@@ -256,7 +247,7 @@ class StoryboardLoader:
 
         _send_state_update(node_id, background_folder, character_folder, scene_folder, scene_index)
 
-        return (combined_tensor, bg_tensor, char_tensor, prompt)
+        return (combined_tensor, bg_tensor, char_tensor, prompt, width, height)
 
 
 # ─────────────────────────────────────────────

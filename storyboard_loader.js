@@ -25,31 +25,20 @@ function el(tag, attrs = {}, children = []) {
 function sectionLabel(text) {
   return el("div", {
     style: {
-      color: "#aaa",
-      fontSize: "11px",
-      fontWeight: "bold",
-      textTransform: "uppercase",
-      letterSpacing: "1px",
-      marginBottom: "4px",
-      marginTop: "8px",
+      color: "#aaa", fontSize: "11px", fontWeight: "bold",
+      textTransform: "uppercase", letterSpacing: "1px",
+      marginBottom: "4px", marginTop: "10px",
     }
   }, [text]);
 }
 
-function inputBox(placeholder, defaultVal, onBlur) {
+function styledInput(placeholder, defaultVal, onBlur) {
   const input = el("input", {
-    type: "text",
-    placeholder,
+    type: "text", placeholder,
     style: {
-      width: "100%",
-      background: "#1a1a1a",
-      border: "1px solid #444",
-      borderRadius: "4px",
-      color: "#eee",
-      padding: "4px 8px",
-      fontSize: "12px",
-      boxSizing: "border-box",
-      marginBottom: "6px",
+      width: "100%", background: "#1a1a1a", border: "1px solid #444",
+      borderRadius: "4px", color: "#eee", padding: "5px 8px",
+      fontSize: "12px", boxSizing: "border-box", marginBottom: "6px",
     }
   });
   input.value = defaultVal || "";
@@ -59,49 +48,43 @@ function inputBox(placeholder, defaultVal, onBlur) {
 }
 
 function paginationBar(page, totalPages, onPage) {
-  const bar = el("div", { style: { display: "flex", alignItems: "center", gap: "6px", margin: "4px 0", justifyContent: "center" } });
-  const prevBtn = el("button", {
-    style: { background: "#333", border: "1px solid #555", color: "#eee", borderRadius: "3px", padding: "2px 10px", cursor: "pointer" }
-  }, ["◀"]);
-  const pageInfo = el("span", { style: { color: "#aaa", fontSize: "11px" } }, [`${page} / ${totalPages}`]);
-  const nextBtn = el("button", {
-    style: { background: "#333", border: "1px solid #555", color: "#eee", borderRadius: "3px", padding: "2px 10px", cursor: "pointer" }
-  }, ["▶"]);
-
-  prevBtn.disabled = page <= 1;
-  nextBtn.disabled = page >= totalPages;
-  prevBtn.style.opacity = page <= 1 ? "0.4" : "1";
-  nextBtn.style.opacity = page >= totalPages ? "0.4" : "1";
-
-  prevBtn.addEventListener("click", () => { if (page > 1) onPage(page - 1); });
-  nextBtn.addEventListener("click", () => { if (page < totalPages) onPage(page + 1); });
-
-  bar.appendChild(prevBtn);
-  bar.appendChild(pageInfo);
-  bar.appendChild(nextBtn);
+  const bar = el("div", { style: { display: "flex", alignItems: "center", gap: "6px", margin: "6px 0", justifyContent: "center" } });
+  const btn = (label, disabled, onClick) => {
+    const b = el("button", {
+      style: {
+        background: "#333", border: "1px solid #555", color: "#eee",
+        borderRadius: "3px", padding: "2px 10px", cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? "0.4" : "1",
+      }
+    }, [label]);
+    if (!disabled) b.addEventListener("click", onClick);
+    return b;
+  };
+  bar.appendChild(btn("◀", page <= 1, () => onPage(page - 1)));
+  bar.appendChild(el("span", { style: { color: "#aaa", fontSize: "11px" } }, [`${page} / ${totalPages}`]));
+  bar.appendChild(btn("▶", page >= totalPages, () => onPage(page + 1)));
   return bar;
 }
 
 // ─────────────────────────────────────────────
-// Gallery section builder
+// Gallery builders
 // ─────────────────────────────────────────────
 
 function buildImageGallery(container, folder, endpoint, page, onPageChange) {
   container.innerHTML = "";
-  if (!folder) {
-    container.appendChild(el("div", { style: { color: "#666", fontSize: "11px", padding: "4px" } }, ["경로를 입력하세요"]));
+  if (!folder || !folder.trim()) {
+    container.appendChild(el("div", { style: { color: "#555", fontSize: "11px", padding: "6px 0" } }, ["경로를 입력하세요"]));
     return;
   }
 
-  const loading = el("div", { style: { color: "#888", fontSize: "11px", padding: "4px" } }, ["불러오는 중..."]);
-  container.appendChild(loading);
+  container.appendChild(el("div", { style: { color: "#888", fontSize: "11px", padding: "4px 0" } }, ["불러오는 중..."]));
 
   fetch(`/storyboard/${endpoint}?folder=${encodeURIComponent(folder)}&page=${page}&page_size=${PAGE_SIZE_IMG}`)
     .then(r => r.json())
     .then(data => {
       container.innerHTML = "";
       if (!data.items || data.items.length === 0) {
-        container.appendChild(el("div", { style: { color: "#666", fontSize: "11px", padding: "4px" } }, ["이미지 없음"]));
+        container.appendChild(el("div", { style: { color: "#666", fontSize: "11px", padding: "4px 0" } }, ["이미지 없음"]));
         return;
       }
 
@@ -109,8 +92,7 @@ function buildImageGallery(container, folder, endpoint, page, onPageChange) {
         style: {
           display: "grid",
           gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
-          gap: "4px",
-          marginBottom: "4px",
+          gap: "4px", marginBottom: "4px",
         }
       });
 
@@ -118,27 +100,21 @@ function buildImageGallery(container, folder, endpoint, page, onPageChange) {
         const stem = item.filename.replace(/\.[^.]+$/, "");
         const cell = el("div", {
           style: {
-            background: "#1a1a1a",
-            borderRadius: "4px",
-            overflow: "hidden",
+            background: "#1a1a1a", borderRadius: "4px", overflow: "hidden",
             border: "1px solid #333",
-            cursor: "default",
           }
         });
         if (item.thumb) {
-          const img = el("img", {
+          cell.appendChild(el("img", {
             src: item.thumb,
             style: { width: "100%", display: "block", aspectRatio: "1", objectFit: "cover" }
-          });
-          cell.appendChild(img);
+          }));
         }
-        const label = el("div", {
-          style: { color: "#888", fontSize: "9px", textAlign: "center", padding: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
-        }, [stem]);
-        cell.appendChild(label);
+        cell.appendChild(el("div", {
+          style: { color: "#777", fontSize: "9px", textAlign: "center", padding: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+        }, [stem]));
         grid.appendChild(cell);
       }
-
       container.appendChild(grid);
 
       const totalPages = Math.ceil(data.total / PAGE_SIZE_IMG);
@@ -149,57 +125,41 @@ function buildImageGallery(container, folder, endpoint, page, onPageChange) {
         }));
       }
     })
-    .catch(() => {
+    .catch(err => {
       container.innerHTML = "";
-      container.appendChild(el("div", { style: { color: "#f66", fontSize: "11px" } }, ["폴더 로드 실패"]));
+      container.appendChild(el("div", { style: { color: "#f66", fontSize: "11px" } }, [`폴더 로드 실패: ${err.message}`]));
     });
 }
 
 function buildSceneList(container, folder, page, onPageChange) {
   container.innerHTML = "";
-  if (!folder) {
-    container.appendChild(el("div", { style: { color: "#666", fontSize: "11px", padding: "4px" } }, ["경로를 입력하세요"]));
+  if (!folder || !folder.trim()) {
+    container.appendChild(el("div", { style: { color: "#555", fontSize: "11px", padding: "6px 0" } }, ["경로를 입력하세요"]));
     return;
   }
 
-  const loading = el("div", { style: { color: "#888", fontSize: "11px", padding: "4px" } }, ["불러오는 중..."]);
-  container.appendChild(loading);
+  container.appendChild(el("div", { style: { color: "#888", fontSize: "11px", padding: "4px 0" } }, ["불러오는 중..."]));
 
   fetch(`/storyboard/scenes?folder=${encodeURIComponent(folder)}&page=${page}&page_size=${PAGE_SIZE_SCENE}`)
     .then(r => r.json())
     .then(data => {
       container.innerHTML = "";
       if (!data.items || data.items.length === 0) {
-        container.appendChild(el("div", { style: { color: "#666", fontSize: "11px", padding: "4px" } }, ["장면 파일 없음"]));
+        container.appendChild(el("div", { style: { color: "#666", fontSize: "11px" } }, ["장면 파일 없음"]));
         return;
       }
 
       for (const item of data.items) {
         const card = el("div", {
           style: {
-            background: "#1a1a1a",
-            border: "1px solid #333",
-            borderRadius: "4px",
-            padding: "6px 8px",
-            marginBottom: "4px",
+            background: "#1a1a1a", border: "1px solid #333",
+            borderRadius: "4px", padding: "6px 8px", marginBottom: "4px",
           }
         });
-
-        const title = el("div", {
-          style: { color: "#ccc", fontSize: "11px", fontWeight: "bold", marginBottom: "3px" }
-        }, [item.filename]);
-
-        const meta = el("div", {
-          style: { color: "#888", fontSize: "10px", marginBottom: "3px" }
-        }, [`배경: ${item.background ?? "-"}  |  캐릭터: ${(item.characters || []).join(", ") || "-"}`]);
-
-        const prompt = el("div", {
-          style: { color: "#aaa", fontSize: "10px", whiteSpace: "pre-wrap", wordBreak: "break-word" }
-        }, [item.prompt || ""]);
-
-        card.appendChild(title);
-        card.appendChild(meta);
-        card.appendChild(prompt);
+        card.appendChild(el("div", { style: { color: "#ccc", fontSize: "11px", fontWeight: "bold", marginBottom: "2px" } }, [item.filename]));
+        card.appendChild(el("div", { style: { color: "#777", fontSize: "10px", marginBottom: "2px" } },
+          [`배경: ${item.background ?? "-"}  |  캐릭터: ${(item.characters || []).join(", ") || "-"}`]));
+        card.appendChild(el("div", { style: { color: "#aaa", fontSize: "10px", whiteSpace: "pre-wrap", wordBreak: "break-word" } }, [item.prompt || ""]));
         container.appendChild(card);
       }
 
@@ -211,9 +171,9 @@ function buildSceneList(container, folder, page, onPageChange) {
         }));
       }
     })
-    .catch(() => {
+    .catch(err => {
       container.innerHTML = "";
-      container.appendChild(el("div", { style: { color: "#f66", fontSize: "11px" } }, ["폴더 로드 실패"]));
+      container.appendChild(el("div", { style: { color: "#f66", fontSize: "11px" } }, [`폴더 로드 실패: ${err.message}`]));
     });
 }
 
@@ -233,86 +193,73 @@ app.registerExtension({
       if (origOnNodeCreated) origOnNodeCreated.apply(this, arguments);
 
       const self = this;
-      self.serialize_widgets = true;
 
-      // state
-      const state = {
-        bgFolder: "",
-        charFolder: "",
-        sceneFolder: "",
-        bgPage: 1,
-        charPage: 1,
-        scenePage: 1,
-      };
+      const state = { bgFolder: "", charFolder: "", sceneFolder: "", bgPage: 1, charPage: 1, scenePage: 1 };
 
-      // ── outer wrapper ──
+      // ── wrapper ──
       const wrapper = el("div", {
-        style: {
-          padding: "8px",
-          background: "#222",
-          borderRadius: "6px",
-          minWidth: "340px",
-          fontFamily: "sans-serif",
-        }
+        style: { padding: "8px", background: "#1e1e1e", borderRadius: "6px", minWidth: "360px", fontFamily: "sans-serif" }
       });
 
-      // ── Background section ──
+      // ── Background ──
       wrapper.appendChild(sectionLabel("🖼 배경 폴더"));
-      const bgInput = inputBox("배경 폴더 경로", state.bgFolder, (v) => {
+      const bgInput = styledInput("배경 폴더 경로", "", (v) => {
         state.bgFolder = v;
-        // sync to widget
-        const w = self.widgets?.find(w => w.name === "background_folder");
-        if (w) w.value = v;
+        syncWidget("background_folder", v);
         state.bgPage = 1;
-        buildImageGallery(bgGallery, v, "backgrounds", state.bgPage, (p) => { state.bgPage = p; });
+        buildImageGallery(bgGallery, v, "backgrounds", 1, (p) => { state.bgPage = p; });
       });
-      const bgGallery = el("div", { style: { minHeight: "40px" } });
+      const bgGallery = el("div", { style: { minHeight: "30px" } });
       wrapper.appendChild(bgInput);
       wrapper.appendChild(bgGallery);
 
-      // ── Character section ──
+      // ── Character ──
       wrapper.appendChild(sectionLabel("🧍 캐릭터 폴더"));
-      const charInput = inputBox("캐릭터 폴더 경로", state.charFolder, (v) => {
+      const charInput = styledInput("캐릭터 폴더 경로", "", (v) => {
         state.charFolder = v;
-        const w = self.widgets?.find(w => w.name === "character_folder");
-        if (w) w.value = v;
+        syncWidget("character_folder", v);
         state.charPage = 1;
-        buildImageGallery(charGallery, v, "characters", state.charPage, (p) => { state.charPage = p; });
+        buildImageGallery(charGallery, v, "characters", 1, (p) => { state.charPage = p; });
       });
-      const charGallery = el("div", { style: { minHeight: "40px" } });
+      const charGallery = el("div", { style: { minHeight: "30px" } });
       wrapper.appendChild(charInput);
       wrapper.appendChild(charGallery);
 
-      // ── Scene section ──
+      // ── Scene ──
       wrapper.appendChild(sectionLabel("📄 장면 폴더"));
-      const sceneInput = inputBox("장면 폴더 경로", state.sceneFolder, (v) => {
+      const sceneInput = styledInput("장면 폴더 경로", "", (v) => {
         state.sceneFolder = v;
-        const w = self.widgets?.find(w => w.name === "scene_folder");
-        if (w) w.value = v;
+        syncWidget("scene_folder", v);
         state.scenePage = 1;
-        buildSceneList(sceneList, v, state.scenePage, (p) => { state.scenePage = p; });
+        buildSceneList(sceneList, v, 1, (p) => { state.scenePage = p; });
       });
-      const sceneList = el("div", { style: { minHeight: "40px" } });
+      const sceneList = el("div", { style: { minHeight: "30px" } });
       wrapper.appendChild(sceneInput);
       wrapper.appendChild(sceneList);
 
-      // ── Add DOM widget ──
-      const domWidget = self.addDOMWidget("storyboard_ui", "div", wrapper, {
+      // ── sync helper ──
+      const syncWidget = (name, value) => {
+        const w = self.widgets?.find(w => w.name === name);
+        if (w) { w.value = value; self.setDirtyCanvas(true); }
+      };
+
+      // ── DOM widget ──
+      self.addDOMWidget("storyboard_ui", "div", wrapper, {
         getValue() { return ""; },
         setValue() {},
         serialize: false,
       });
 
-      // sync existing widget values → input boxes
+      // ── sync saved values → input boxes on load ──
       setTimeout(() => {
-        const bgW = self.widgets?.find(w => w.name === "background_folder");
-        const charW = self.widgets?.find(w => w.name === "character_folder");
+        const bgW    = self.widgets?.find(w => w.name === "background_folder");
+        const charW  = self.widgets?.find(w => w.name === "character_folder");
         const sceneW = self.widgets?.find(w => w.name === "scene_folder");
 
-        if (bgW?.value) { bgInput.value = bgW.value; state.bgFolder = bgW.value; buildImageGallery(bgGallery, bgW.value, "backgrounds", 1, (p) => { state.bgPage = p; }); }
-        if (charW?.value) { charInput.value = charW.value; state.charFolder = charW.value; buildImageGallery(charGallery, charW.value, "characters", 1, (p) => { state.charPage = p; }); }
+        if (bgW?.value)    { bgInput.value    = bgW.value;    state.bgFolder    = bgW.value;    buildImageGallery(bgGallery,    bgW.value,    "backgrounds", 1, (p) => { state.bgPage    = p; }); }
+        if (charW?.value)  { charInput.value  = charW.value;  state.charFolder  = charW.value;  buildImageGallery(charGallery,  charW.value,  "characters",  1, (p) => { state.charPage  = p; }); }
         if (sceneW?.value) { sceneInput.value = sceneW.value; state.sceneFolder = sceneW.value; buildSceneList(sceneList, sceneW.value, 1, (p) => { state.scenePage = p; }); }
-      }, 300);
+      }, 500);
     };
   }
 });
