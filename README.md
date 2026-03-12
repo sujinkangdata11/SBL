@@ -94,6 +94,4 @@ git clone https://github.com/YOUR_USERNAME/ssssss
 
 ---
 
-## 📄 License
 
-MIT License
