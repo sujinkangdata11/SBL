@@ -10,19 +10,18 @@ from PIL import Image
 from aiohttp import web
 from server import PromptServer
 
-
 STATE_LOCK = threading.Lock()
 STORYBOARD_STATE: Dict[str, Dict[str, Any]] = {}
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
-
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
 
-def _find_image_by_number(folder: str, number: int) -> str:
+def _find_image_by_number(folder: str, number: str) -> str:
+    """number는 "6", "6-2" 등 문자열로 받습니다."""
     folder_path = Path(folder.strip())
     for ext in ALLOWED_EXTENSIONS:
         candidate = folder_path / f"{number}{ext}"
@@ -38,6 +37,7 @@ def _load_images_from_folder(folder: str) -> List[Dict[str, Any]]:
     folder_path = Path(folder.strip())
     if not folder_path.exists():
         return []
+
     items = []
     for f in folder_path.iterdir():
         if f.suffix.lower() in ALLOWED_EXTENSIONS:
@@ -45,8 +45,10 @@ def _load_images_from_folder(folder: str) -> List[Dict[str, Any]]:
 
     def sort_key(item):
         stem = Path(item["filename"]).stem
+        # "6-2" → (6, 2), "6" → (6, 0) 순서로 정렬
+        parts = stem.split("-")
         try:
-            return (0, int(stem))
+            return (0,) + tuple(int(p) for p in parts)
         except ValueError:
             return (1, stem)
 
@@ -58,6 +60,7 @@ def _load_scenes_from_folder(folder: str) -> List[Dict[str, Any]]:
     folder_path = Path(folder.strip())
     if not folder_path.exists():
         return []
+
     items = []
     for f in folder_path.iterdir():
         if f.suffix.lower() == ".txt":
@@ -87,21 +90,44 @@ def _image_to_base64(path: str, max_size: int = 200) -> str:
         return ""
 
 
+def _parse_image_id(val: str) -> str:
+    """
+    "6", "6-2", " 6-2 " 등을 정규화해서 반환합니다.
+    숫자와 하이픈만 허용하고, 앞뒤 공백은 제거합니다.
+    """
+    val = val.strip()
+    # 숫자-숫자(-숫자...) 패턴만 허용
+    if re.fullmatch(r"\d+(-\d+)*", val):
+        return val
+    raise ValueError(f"유효하지 않은 이미지 ID: {val!r}")
+
+
 def _parse_scene(content: str) -> Dict[str, Any]:
     result = {"background": None, "characters": [], "prompt": ""}
+
     for line in content.splitlines():
         line = line.strip()
         if line.upper().startswith("BACKGROUND:"):
             val = line.split(":", 1)[1].strip()
             try:
-                result["background"] = int(val)
+                result["background"] = _parse_image_id(val)
             except ValueError:
                 pass
         elif line.upper().startswith("CHARACTERS:"):
             val = line.split(":", 1)[1].strip()
-            result["characters"] = [int(x.strip()) for x in val.split(",") if x.strip().isdigit()]
+            ids = []
+            for token in val.split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                try:
+                    ids.append(_parse_image_id(token))
+                except ValueError:
+                    pass
+            result["characters"] = ids
         elif line.upper().startswith("PROMPT:"):
             result["prompt"] = line.split(":", 1)[1].strip()
+
     return result
 
 
@@ -166,7 +192,6 @@ def _pil_to_tensor(img: Image.Image):
     arr = np.array(img.convert("RGB")).astype(np.float32) / 255.0
     return torch.from_numpy(arr).unsqueeze(0)
 
-
 # ─────────────────────────────────────────────
 # Node
 # ─────────────────────────────────────────────
@@ -184,7 +209,7 @@ class StoryboardLoader:
             "required": {
                 "background_folder": ("STRING", {"default": "C:/storyboard/backgrounds", "multiline": False}),
                 "character_folder":  ("STRING", {"default": "C:/storyboard/characters",  "multiline": False}),
-                "scene_folder":      ("STRING", {"default": "C:/storyboard/scenes",       "multiline": False}),
+                "scene_folder":      ("STRING", {"default": "C:/storyboard/scenes",      "multiline": False}),
                 "scene_index":       ("INT",    {"default": 1, "min": 1, "max": 9999, "step": 1}),
                 "combine_mode":      (["overlay", "character_bottom", "side_by_side"], {"default": "overlay"}),
                 "width":             ("INT",    {"default": 1280, "min": 64, "max": 8192, "step": 8}),
@@ -240,15 +265,14 @@ class StoryboardLoader:
         with STATE_LOCK:
             STORYBOARD_STATE[node_id] = {
                 "background_folder": background_folder,
-                "character_folder": character_folder,
-                "scene_folder": scene_folder,
-                "scene_index": scene_index,
+                "character_folder":  character_folder,
+                "scene_folder":      scene_folder,
+                "scene_index":       scene_index,
             }
 
         _send_state_update(node_id, background_folder, character_folder, scene_folder, scene_index)
 
         return (combined_tensor, bg_tensor, char_tensor, prompt, width, height)
-
 
 # ─────────────────────────────────────────────
 # State & WebSocket
@@ -256,13 +280,12 @@ class StoryboardLoader:
 
 def _send_state_update(node_id, bg_folder, char_folder, scene_folder, scene_index):
     PromptServer.instance.send_sync("storyboard_update", {
-        "node_id": node_id,
+        "node_id":           node_id,
         "background_folder": bg_folder,
-        "character_folder": char_folder,
-        "scene_folder": scene_folder,
-        "scene_index": scene_index,
+        "character_folder":  char_folder,
+        "scene_folder":      scene_folder,
+        "scene_index":       scene_index,
     })
-
 
 # ─────────────────────────────────────────────
 # REST API routes
@@ -270,15 +293,14 @@ def _send_state_update(node_id, bg_folder, char_folder, scene_folder, scene_inde
 
 routes = PromptServer.instance.routes
 
-
 @routes.get("/storyboard/backgrounds")
 async def get_backgrounds(request):
-    folder = request.query.get("folder", "")
-    page = int(request.query.get("page", 1))
+    folder    = request.query.get("folder", "")
+    page      = int(request.query.get("page", 1))
     page_size = int(request.query.get("page_size", 25))
-    items = _load_images_from_folder(folder)
-    total = len(items)
-    start = (page - 1) * page_size
+    items     = _load_images_from_folder(folder)
+    total     = len(items)
+    start     = (page - 1) * page_size
     page_items = items[start:start + page_size]
     result = [{"filename": i["filename"], "thumb": _image_to_base64(i["path"])} for i in page_items]
     return web.json_response({"items": result, "total": total, "page": page, "page_size": page_size})
@@ -286,12 +308,12 @@ async def get_backgrounds(request):
 
 @routes.get("/storyboard/characters")
 async def get_characters(request):
-    folder = request.query.get("folder", "")
-    page = int(request.query.get("page", 1))
+    folder    = request.query.get("folder", "")
+    page      = int(request.query.get("page", 1))
     page_size = int(request.query.get("page_size", 25))
-    items = _load_images_from_folder(folder)
-    total = len(items)
-    start = (page - 1) * page_size
+    items     = _load_images_from_folder(folder)
+    total     = len(items)
+    start     = (page - 1) * page_size
     page_items = items[start:start + page_size]
     result = [{"filename": i["filename"], "thumb": _image_to_base64(i["path"])} for i in page_items]
     return web.json_response({"items": result, "total": total, "page": page, "page_size": page_size})
@@ -299,25 +321,24 @@ async def get_characters(request):
 
 @routes.get("/storyboard/scenes")
 async def get_scenes(request):
-    folder = request.query.get("folder", "")
-    page = int(request.query.get("page", 1))
+    folder    = request.query.get("folder", "")
+    page      = int(request.query.get("page", 1))
     page_size = int(request.query.get("page_size", 20))
-    items = _load_scenes_from_folder(folder)
-    total = len(items)
-    start = (page - 1) * page_size
+    items     = _load_scenes_from_folder(folder)
+    total     = len(items)
+    start     = (page - 1) * page_size
     page_items = items[start:start + page_size]
     result = []
     for item in page_items:
         parsed = _parse_scene(item["content"])
         result.append({
-            "filename": item["filename"],
-            "content": item["content"],
+            "filename":   item["filename"],
+            "content":    item["content"],
             "background": parsed["background"],
             "characters": parsed["characters"],
-            "prompt": parsed["prompt"],
+            "prompt":     parsed["prompt"],
         })
     return web.json_response({"items": result, "total": total, "page": page, "page_size": page_size})
-
 
 # ─────────────────────────────────────────────
 # Registration
