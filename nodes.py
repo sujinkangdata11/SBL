@@ -207,13 +207,14 @@ class StoryboardLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "background_folder": ("STRING", {"default": "C:/storyboard/backgrounds", "multiline": False}),
-                "character_folder":  ("STRING", {"default": "C:/storyboard/characters",  "multiline": False}),
-                "scene_folder":      ("STRING", {"default": "C:/storyboard/scenes",      "multiline": False}),
-                "scene_index":       ("INT",    {"default": 1, "min": 1, "max": 9999, "step": 1}),
+                "background_folder": ("STRING",  {"default": "C:/storyboard/backgrounds", "multiline": False}),
+                "character_folder":  ("STRING",  {"default": "C:/storyboard/characters",  "multiline": False}),
+                "scene_folder":      ("STRING",  {"default": "C:/storyboard/scenes",      "multiline": False}),
+                "scene_index":       ("INT",     {"default": 1, "min": 1, "max": 9999, "step": 1}),
+                "use_background":    ("BOOLEAN", {"default": True, "label_on": "배경 ON", "label_off": "배경 OFF"}),
                 "combine_mode":      (["overlay", "character_bottom", "side_by_side"], {"default": "overlay"}),
-                "width":             ("INT",    {"default": 1280, "min": 64, "max": 8192, "step": 8}),
-                "height":            ("INT",    {"default": 720,  "min": 64, "max": 8192, "step": 8}),
+                "width":             ("INT",     {"default": 1280, "min": 64, "max": 8192, "step": 8}),
+                "height":            ("INT",     {"default": 720,  "min": 64, "max": 8192, "step": 8}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -226,6 +227,7 @@ class StoryboardLoader:
         character_folder: str,
         scene_folder: str,
         scene_index: int,
+        use_background: bool = True,
         combine_mode: str = "overlay",
         width: int = 1280,
         height: int = 720,
@@ -256,8 +258,11 @@ class StoryboardLoader:
         char_pil = _merge_character_images(char_paths)
         char_tensor = _pil_to_tensor(char_pil)
 
-        # 합성
-        combined_pil = _combine_images(bg_pil, char_pil, combine_mode)
+        # 합성 (use_background OFF 시 캐릭터 이미지만 combined로 출력)
+        if use_background:
+            combined_pil = _combine_images(bg_pil, char_pil, combine_mode)
+        else:
+            combined_pil = char_pil
         combined_tensor = _pil_to_tensor(combined_pil)
 
         prompt = scene.get("prompt", "")
